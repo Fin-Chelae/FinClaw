@@ -1,0 +1,113 @@
+[project]
+name = "finclaw"
+version = "0.1.0"
+description = "AI-powered financial analysis expert"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "finclaw contributors"}
+]
+keywords = ["ai", "agent", "finance", "analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "typer>=0.9.0",
+    "litellm>=1.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "websockets>=12.0",
+    "websocket-client>=1.6.0",
+    "httpx>=0.25.0",
+    "oauth-cli-kit>=0.1.1",
+    "loguru>=0.7.0",
+    "readability-lxml>=0.8.0",
+    "rich>=13.0.0",
+    "croniter>=2.0.0",
+    "dingtalk-stream>=0.4.0",
+    "python-telegram-bot[socks]>=21.0",
+    "lark-oapi>=1.0.0",
+    "socksio>=1.0.0",
+    "python-socketio>=5.11.0",
+    "msgpack>=1.0.8",
+    "slack-sdk>=3.26.0",
+    "slackify-markdown>=0.2.0",
+    "qq-botpy>=1.0.0",
+    "python-socks[asyncio]>=2.4.0",
+    "prompt-toolkit>=3.0.0",
+    "mcp>=1.0.0",
+    "json-repair>=0.30.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=4.9.0",
+    "pandas>=2.0.0",
+    "yfinance>=0.2.0",
+    "akshare>=1.12.0",
+    "scipy>=1.11.0",
+    "scikit-learn>=1.3.0",
+    "statsmodels>=0.14.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.13.0",
+    "feedparser>=6.0.0",
+    "numpy>=1.24.0",
+    "twikit>=2.0.0",
+    "solders>=0.21.0",
+    "base58>=2.1.0",
+    "web3>=6.0.0",
+    "eth-account>=0.11.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+finclaw = "finclaw.cli.commands:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["finclaw"]
+
+[tool.hatch.build.targets.wheel.sources]
+"finclaw" = "finclaw"
+
+[tool.hatch.build]
+include = [
+    "finclaw/**/*.py",
+    "finclaw/skills/**/*.md",
+    "finclaw/skills/**/*.sh",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "finclaw/",
+    "bridge/",
+    "README.md",
+    "LICENSE",
+]
+
+[tool.hatch.build.targets.wheel.force-include]
+"bridge" = "finclaw/bridge"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
