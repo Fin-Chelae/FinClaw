@@ -126,7 +126,11 @@ class ExecTool(Tool):
                 return "Error: Command blocked by safety guard (path traversal detected)"
 
             # Block symlink creation (workspace escape vector)
-            if re.search(r"\bln\s+-s\b", lower) or re.search(r"\bln\s+--symbolic\b", lower):
+            if re.search(r"\bln\s+(-[a-zA-Z]*s|-s|--symbolic)\b", lower):
+                return "Error: Command blocked by safety guard (symlink creation not allowed in restricted mode)"
+
+            # Block cp -s (also creates symlinks)
+            if re.search(r"\bcp\s+(-[a-zA-Z]*s|-s|--symbolic-link)\b", lower):
                 return "Error: Command blocked by safety guard (symlink creation not allowed in restricted mode)"
 
             # Block mount command
