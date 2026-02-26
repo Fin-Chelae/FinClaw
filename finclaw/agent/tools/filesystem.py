@@ -1,15 +1,28 @@
 """File system tools: read, write, edit."""
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from finclaw.agent.tools.base import Tool
 
+logger = logging.getLogger(__name__)
+_unrestricted_warned = False
+
 
 def _resolve_path(path: str, allowed_dir: Path | None = None) -> Path:
     """Resolve path and optionally enforce directory restriction."""
+    global _unrestricted_warned
+
     resolved = Path(path).expanduser().resolve()
-    if allowed_dir and not str(resolved).startswith(str(allowed_dir.resolve())):
+
+    if allowed_dir is None:
+        if not _unrestricted_warned:
+            logger.warning("Filesystem tools running in unrestricted mode — consider setting tools.restrictToWorkspace=true")
+            _unrestricted_warned = True
+        return resolved
+
+    if not resolved.is_relative_to(allowed_dir.resolve()):
         raise PermissionError(f"Path {path} is outside allowed directory {allowed_dir}")
     return resolved
 

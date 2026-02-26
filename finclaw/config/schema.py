@@ -252,7 +252,7 @@ class ToolsConfig(BaseModel):
     financial: FinancialDataConfig = Field(default_factory=FinancialDataConfig)
     meme_monitor: MemeMonitorConfig = Field(default_factory=MemeMonitorConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
-    restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
+    restrict_to_workspace: bool = True  # SECURITY: defaults to True to prevent LLM from accessing files outside workspace
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
 
