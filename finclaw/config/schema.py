@@ -125,7 +125,9 @@ class SlackDMConfig(BaseModel):
     """Slack DM policy configuration."""
     enabled: bool = True
     open_access: bool = False  # When True, allows any user. When False (default), requires allow_from list.
-    policy: str = "open"  # "open" or "allowlist"
+    # DEPRECATED: use open_access instead. Kept for backward compatibility.
+    # If open_access is False and policy is "open", open_access takes precedence (deny).
+    policy: str = "allowlist"  # "open" or "allowlist" — default changed to match open_access=False
     allow_from: list[str] = Field(default_factory=list)  # Allowed Slack user IDs
 
 

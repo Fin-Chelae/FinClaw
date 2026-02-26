@@ -19,7 +19,6 @@ class BaseChannel(ABC):
     """
     
     name: str = "base"
-    _rate_limits: dict[str, list[float]] = {}
     
     def __init__(self, config: Any, bus: MessageBus):
         """
@@ -32,6 +31,8 @@ class BaseChannel(ABC):
         self.config = config
         self.bus = bus
         self._running = False
+        self._rate_limits: dict[str, list[float]] = {}
+        self._rate_limit_notified: set[str] = set()  # Track first-drop notification per window
     
     @abstractmethod
     async def start(self) -> None:
@@ -126,17 +127,21 @@ class BaseChannel(ABC):
         
         # Clean up old entries lazily (older than 60 seconds)
         if sender_key in self._rate_limits:
-            self._rate_limits[sender_key] = [
-                ts for ts in self._rate_limits[sender_key] if now - ts < 60
-            ]
+            remaining = [ts for ts in self._rate_limits[sender_key] if now - ts < 60]
+            self._rate_limits[sender_key] = remaining
+            if not remaining:
+                # Window expired — reset notification flag
+                self._rate_limit_notified.discard(sender_key)
         
         # Check rate limit
         timestamps = self._rate_limits.get(sender_key, [])
         if len(timestamps) >= 20:
-            logger.warning(
-                f"Rate limit exceeded for sender {sender_id} on channel {self.name}. "
-                f"Dropping message."
-            )
+            if sender_key not in self._rate_limit_notified:
+                self._rate_limit_notified.add(sender_key)
+                logger.warning(
+                    f"Rate limit exceeded for sender {sender_id} on channel {self.name}. "
+                    f"Dropping messages until window resets."
+                )
             return
         
         # Record this message

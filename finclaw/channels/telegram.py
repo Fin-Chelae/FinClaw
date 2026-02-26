@@ -337,16 +337,7 @@ class TelegramChannel(BaseChannel):
         
         str_chat_id = str(chat_id)
         
-        # Check if sender is allowed before handling the message
-        if not self.is_allowed(sender_id):
-            logger.warning(f"Telegram access denied for sender {sender_id}")
-            await self._app.bot.send_message(
-                chat_id=chat_id,
-                text="⚠️ Access denied. Contact the bot administrator.",
-                parse_mode="HTML"
-            )
-            return
-        
+
         # Start typing indicator before processing
         self._start_typing(str_chat_id)
         
