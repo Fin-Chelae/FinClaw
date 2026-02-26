@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Any
+from time import time
 
 from loguru import logger
 
@@ -18,6 +19,7 @@ class BaseChannel(ABC):
     """
     
     name: str = "base"
+    _rate_limits: dict[str, list[float]] = {}
     
     def __init__(self, config: Any, bus: MessageBus):
         """
@@ -70,9 +72,17 @@ class BaseChannel(ABC):
         """
         allow_list = getattr(self.config, "allow_from", [])
         
-        # If no allow list, allow everyone
-        if not allow_list:
+        # Check for open_access (explicit opt-in to public access)
+        if getattr(self.config, "open_access", False):
             return True
+        
+        # Default-deny: If no allow list, deny access
+        if not allow_list:
+            logger.warning(
+                f"Channel {self.name}: no allow_from configured — denying access for {sender_id}. "
+                "Set allow_from or open_access=True to allow."
+            )
+            return False
         
         sender_str = str(sender_id)
         if sender_str in allow_list:
@@ -109,6 +119,29 @@ class BaseChannel(ABC):
                 f"Add them to allowFrom list in config to grant access."
             )
             return
+        
+        # Rate limiting: check if sender has >20 messages in last 60 seconds
+        sender_key = f"{self.name}:{sender_id}"
+        now = time()
+        
+        # Clean up old entries lazily (older than 60 seconds)
+        if sender_key in self._rate_limits:
+            self._rate_limits[sender_key] = [
+                ts for ts in self._rate_limits[sender_key] if now - ts < 60
+            ]
+        
+        # Check rate limit
+        timestamps = self._rate_limits.get(sender_key, [])
+        if len(timestamps) >= 20:
+            logger.warning(
+                f"Rate limit exceeded for sender {sender_id} on channel {self.name}. "
+                f"Dropping message."
+            )
+            return
+        
+        # Record this message
+        timestamps.append(now)
+        self._rate_limits[sender_key] = timestamps
         
         msg = InboundMessage(
             channel=self.name,
