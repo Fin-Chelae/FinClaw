@@ -451,6 +451,10 @@ class AgentLoop:
             channel=msg.channel,
             chat_id=msg.chat_id,
         )
+        # Set a unique turn ID so tools can enforce cross-turn constraints
+        # (e.g. meme_create confirmation must come from a separate user message)
+        self.tools.set_turn_id(f"{msg.channel}:{msg.sender_id}:{id(msg)}")
+
         final_content, tools_used = await self._run_agent_loop(initial_messages)
 
         if final_content is None:

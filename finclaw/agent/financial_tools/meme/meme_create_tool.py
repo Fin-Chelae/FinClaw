@@ -18,6 +18,7 @@ import asyncio
 from loguru import logger
 
 from finclaw.agent.tools.base import Tool
+from finclaw.agent.tools import registry as _registry
 
 # Confirmation expiry timeout in seconds
 CONFIRMATION_TIMEOUT_SEC = 300  # 5 minutes
@@ -515,7 +516,9 @@ def _run_create(params: dict) -> dict:
 # Tool class
 # =====================================================================
 
-# Pending creation requests storage (maps confirmation_token → {params, created_at})
+# Pending creation requests storage (maps confirmation_token → {params, created_at, turn_id})
+# Hard cap to prevent unbounded growth from repeated create calls without confirm/cancel
+_MAX_PENDING = 50
 _pending_creates: dict[str, dict] = {}
 
 
@@ -674,7 +677,7 @@ class MemeCreateTool(Tool):
     async def _create(self, kwargs: dict) -> str:
         import time as time_module
 
-        global _pending_creates
+        # _pending_creates is mutated in-place (no rebinding)
 
         # Lazy cleanup of expired entries
         now = time_module.time()
@@ -701,11 +704,16 @@ class MemeCreateTool(Tool):
         if missing:
             return json.dumps({"success": False, "error": f"Missing required fields: {', '.join(missing)}"})
 
-        # Generate confirmation token and store the request
+        # Enforce max pending size
+        if len(_pending_creates) >= _MAX_PENDING:
+            return json.dumps({"success": False, "error": "Too many pending creation requests. Cancel or confirm existing ones first."})
+
+        # Generate confirmation token and store the request with turn context
         confirmation_token = str(uuid4())
         _pending_creates[confirmation_token] = {
             "params": params,
             "created_at": time_module.time(),
+            "turn_id": _registry.current_turn_id,
         }
 
         platform = params.get("platform", "").lower().strip()
@@ -727,7 +735,7 @@ class MemeCreateTool(Tool):
     async def _confirm(self, kwargs: dict) -> str:
         import time as time_module
 
-        global _pending_creates
+        # _pending_creates is mutated in-place (no rebinding)
 
         confirmation_token = kwargs.get("confirmation_token", "")
         if not confirmation_token:
@@ -743,6 +751,17 @@ class MemeCreateTool(Tool):
             del _pending_creates[confirmation_token]
             return json.dumps({"success": False, "error": "Confirmation token has expired. Please create a new deployment request."})
 
+        # SECURITY: Reject confirmation from the same agent turn that created it.
+        # This prevents the LLM from calling create→confirm in a single turn,
+        # bypassing human review. The confirm must come from a new user message.
+        create_turn = request_data.get("turn_id", "")
+        if create_turn and create_turn == _registry.current_turn_id:
+            return json.dumps({
+                "success": False,
+                "error": "Cannot confirm in the same turn as creation. "
+                         "Present the confirmation details to the user and wait for their explicit approval in a new message.",
+            })
+
         # Execute the creation
         params = request_data["params"]
         try:
@@ -756,7 +775,7 @@ class MemeCreateTool(Tool):
             return json.dumps({"success": False, "error": str(e)})
 
     async def _cancel(self, kwargs: dict) -> str:
-        global _pending_creates
+        # _pending_creates is mutated in-place (no rebinding)
 
         confirmation_token = kwargs.get("confirmation_token", "")
         if not confirmation_token:
