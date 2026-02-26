@@ -34,12 +34,13 @@ class ExecTool(Tool):
             r":\(\)\s*\{.*\};\s*:",          # fork bomb
             # Interpreter invocations (arbitrary code execution)
             r"\b(python[0-9]*|perl|ruby|node)\b",
-            # Subshell evasion
-            r"\b(bash|sh|zsh)\s+-c\b",
+            # Subshell evasion (any invocation, not just -c)
+            r"\b(bash|sh|zsh)\b",
             # find with dangerous actions
             r"\bfind\b.*-(delete|exec)",
-            # Remote code execution via pipe to shell
+            # Remote code execution via pipe to shell or download-then-exec
             r"(curl|wget).*\|.*(sh|bash)",
+            r"(curl|wget).*-o\b",
             # Encoded payload execution
             r"base64.*\|.*(sh|bash)",
             # xargs with rm
@@ -84,12 +85,15 @@ class ExecTool(Tool):
     def _sanitize_env(self) -> dict[str, str]:
         """Return a copy of os.environ with sensitive keys removed."""
         sensitive_patterns = [
-            r".*_KEY$",
-            r".*_TOKEN$",
-            r".*_SECRET$",
-            r".*_PASSWORD$",
+            r".*KEY.*",
+            r".*TOKEN.*",
+            r".*SECRET.*",
+            r".*PASSWORD.*",
             r".*PRIVATE.*",
             r".*CREDENTIAL.*",
+            r".*DATABASE_URL.*",
+            r".*DSN.*",
+            r".*CONNECTION_STRING.*",
         ]
         sanitized = {}
         for key, value in os.environ.items():
@@ -163,7 +167,11 @@ class ExecTool(Tool):
                 return "Error: Command blocked by safety guard (path traversal detected)"
 
             # Check for symlink creation (potential escape vector)
-            if re.search(r"\bln\s+-s\b", lower):
+            if re.search(r"\bln\s+(-[a-zA-Z]*s|-s|--symbolic)\b", lower):
+                return "Error: Command blocked by safety guard (symlink creation not allowed in workspace mode)"
+
+            # Block cp -s (creates symlinks)
+            if re.search(r"\bcp\s+(-[a-zA-Z]*s|-s|--symbolic-link)\b", lower):
                 return "Error: Command blocked by safety guard (symlink creation not allowed in workspace mode)"
 
             cwd_path = Path(cwd).resolve()
