@@ -12,11 +12,15 @@ import json
 import os
 import time
 from typing import Any
+from uuid import uuid4
 
 import asyncio
 from loguru import logger
 
 from finclaw.agent.tools.base import Tool
+
+# Confirmation expiry timeout in seconds
+CONFIRMATION_TIMEOUT_SEC = 300  # 5 minutes
 
 # ---------------------------------------------------------------------------
 # pump.fun constants
@@ -511,6 +515,10 @@ def _run_create(params: dict) -> dict:
 # Tool class
 # =====================================================================
 
+# Pending creation requests storage (maps confirmation_token → {params, created_at})
+_pending_creates: dict[str, dict] = {}
+
+
 class MemeCreateTool(Tool):
     """Tool to create (deploy) memecoins on pump.fun (Solana) or four.meme (BSC)."""
 
@@ -537,11 +545,17 @@ class MemeCreateTool(Tool):
             "properties": {
                 "command": {
                     "type": "string",
-                    "enum": ["check_env", "create"],
+                    "enum": ["check_env", "create", "confirm", "cancel"],
                     "description": (
                         "check_env: verify wallet credentials are configured (config or env vars); "
-                        "create: deploy the memecoin (requires credentials to be set)."
+                        "create: deploy the memecoin (requires credentials to be set); "
+                        "confirm: confirm a pending token deployment using confirmation_token; "
+                        "cancel: cancel a pending token deployment using confirmation_token."
                     ),
+                },
+                "confirmation_token": {
+                    "type": "string",
+                    "description": "Confirmation token for confirm/cancel commands. Required for 'confirm' and 'cancel'.",
                 },
                 "platform": {
                     "type": "string",
@@ -611,6 +625,12 @@ class MemeCreateTool(Tool):
         if command == "create":
             return await self._create(kwargs)
 
+        if command == "confirm":
+            return await self._confirm(kwargs)
+
+        if command == "cancel":
+            return await self._cancel(kwargs)
+
         return json.dumps({"error": f"Unknown command: {command!r}"})
 
     def _check_env(self, platform: str | None = None) -> str:
@@ -652,6 +672,21 @@ class MemeCreateTool(Tool):
                            "message": "Wallet credentials configured. Ready to create."})
 
     async def _create(self, kwargs: dict) -> str:
+        import time as time_module
+
+        global _pending_creates
+
+        # Lazy cleanup of expired entries
+        now = time_module.time()
+        expired_tokens = [
+            token for token, data in _pending_creates.items()
+            if now - data.get("created_at", 0) > CONFIRMATION_TIMEOUT_SEC
+        ]
+        for token in expired_tokens:
+            del _pending_creates[token]
+        if expired_tokens:
+            logger.info(f"Cleaned up {len(expired_tokens)} expired creation requests")
+
         # Normalize field names (router uses token_name/token_description to
         # avoid collision with other router params)
         params = dict(kwargs)
@@ -666,9 +701,74 @@ class MemeCreateTool(Tool):
         if missing:
             return json.dumps({"success": False, "error": f"Missing required fields: {', '.join(missing)}"})
 
+        # Generate confirmation token and store the request
+        confirmation_token = str(uuid4())
+        _pending_creates[confirmation_token] = {
+            "params": params,
+            "created_at": time_module.time(),
+        }
+
+        platform = params.get("platform", "").lower().strip()
+
+        logger.info(f"Created confirmation token {confirmation_token} for token '{params.get('name')}' on {platform}")
+
+        return json.dumps({
+            "status": "pending_confirmation",
+            "confirmation_token": confirmation_token,
+            "details": {
+                "name": params.get("name"),
+                "symbol": params.get("symbol"),
+                "platform": platform,
+                "description": params.get("description"),
+            },
+            "message": "⚠️ Please confirm this token deployment. Use command='confirm' with this confirmation_token to proceed, or command='cancel' to abort. This expires in 5 minutes.",
+        }, ensure_ascii=False)
+
+    async def _confirm(self, kwargs: dict) -> str:
+        import time as time_module
+
+        global _pending_creates
+
+        confirmation_token = kwargs.get("confirmation_token", "")
+        if not confirmation_token:
+            return json.dumps({"success": False, "error": "Missing required field: confirmation_token"})
+
+        request_data = _pending_creates.get(confirmation_token)
+        if not request_data:
+            return json.dumps({"success": False, "error": "Invalid or expired confirmation token"})
+
+        # Check if expired
+        now = time_module.time()
+        if now - request_data.get("created_at", 0) > CONFIRMATION_TIMEOUT_SEC:
+            del _pending_creates[confirmation_token]
+            return json.dumps({"success": False, "error": "Confirmation token has expired. Please create a new deployment request."})
+
+        # Execute the creation
+        params = request_data["params"]
         try:
             result = await asyncio.to_thread(_run_create, params)
+            # Remove from pending on success (or failure - user can retry)
+            del _pending_creates[confirmation_token]
             return json.dumps(result, ensure_ascii=False, default=str)
         except Exception as e:
-            logger.error(f"meme_create error: {e}")
+            logger.error(f"meme_create confirm error: {e}")
+            # Keep the pending request so user can retry if desired
             return json.dumps({"success": False, "error": str(e)})
+
+    async def _cancel(self, kwargs: dict) -> str:
+        global _pending_creates
+
+        confirmation_token = kwargs.get("confirmation_token", "")
+        if not confirmation_token:
+            return json.dumps({"success": False, "error": "Missing required field: confirmation_token"})
+
+        if confirmation_token not in _pending_creates:
+            return json.dumps({"success": False, "error": "Invalid or expired confirmation token"})
+
+        del _pending_creates[confirmation_token]
+        logger.info(f"Cancelled creation request with token {confirmation_token}")
+
+        return json.dumps({
+            "success": True,
+            "message": "Token deployment cancelled successfully.",
+        })
