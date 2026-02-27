@@ -9,7 +9,7 @@ class FinancialIntent:
     """Result of financial intent detection."""
 
     is_financial: bool = False
-    intent_type: str = "unknown"  # price_query / financial_analysis / market_search / macro_analysis / meme / unknown
+    intent_type: str = "unknown"  # price_query / financial_analysis / market_search / macro_analysis / meme / prediction_market / unknown
     tickers: list[str] = field(default_factory=list)
     confidence: float = 0.0
 
@@ -75,6 +75,13 @@ class FinancialIntentDetector:
         "通胀", "通货膨胀", "利率", "货币政策",
         "财政政策", "汇率", "外汇", "贸易", "贸易战",
         "经济周期", "衰退", "美联储", "央行", "宏观经济",
+        # prediction markets
+        "prediction market", "polymarket", "kalshi",
+        "betting odds", "prediction odds", "event contract",
+        "election odds", "election market",
+        "probability changed", "probability history", "probability over time",
+        "odds changed", "odds over time", "odds history",
+        "how has the probability", "how have the odds",
         # meme coin / crypto culture (detected as financial AND routed via MEME_KEYWORDS)
         "meme coin", "memecoin", "meme token", "degen", "solana meme",
         "dexscreener", "dex screener", "coingecko", "coin gecko",
@@ -136,6 +143,22 @@ class FinancialIntentDetector:
         "truth social", "tiktok memecoin", "tiktok meme",
     }
 
+    # Triggers the prediction market router — covers Polymarket + Kalshi queries.
+    PREDICTION_KEYWORDS = {
+        "prediction market", "prediction markets",
+        "polymarket", "kalshi",
+        "betting odds", "prediction odds", "market odds",
+        "election odds", "election market", "election prediction",
+        "event contract", "event market", "binary option",
+        "probability market", "forecast market",
+        "what are the odds", "odds of", "likelihood of", "chances of",
+        "betting market", "prediction betting",
+        # probability / odds history queries
+        "probability changed", "probability history", "probability over time",
+        "odds changed", "odds over time", "odds history",
+        "how has the probability", "how have the odds",
+    }
+
     PRICE_KEYWORDS = {
         "price", "quote", "how much", "current",
         "股价", "价格", "多少钱", "现在", "实时", "行情",
@@ -164,6 +187,8 @@ class FinancialIntentDetector:
 
         if any(kw.lower() in query_lower for kw in self.MEME_KEYWORDS):
             intent.intent_type = "meme"
+        elif any(kw.lower() in query_lower for kw in self.PREDICTION_KEYWORDS):
+            intent.intent_type = "prediction_market"
         elif any(kw.lower() in query_lower for kw in self.MACRO_KEYWORDS):
             intent.intent_type = "macro_analysis"
         elif any(kw.lower() in query_lower for kw in self.PRICE_KEYWORDS):

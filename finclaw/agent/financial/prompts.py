@@ -95,6 +95,41 @@ IMPORTANT:
 - Higher meme_score = higher viral potential. Scores below 3 are filtered out by default."""
 
 
+# ===== Prediction market tool routing =====
+PREDICTION_ROUTING_PROMPT = """[System Context - Prediction Market Tools]
+
+The user has a prediction market query. Use the `prediction_market` tool with a natural-language query.
+
+QUERY EXAMPLES:
+- "What prediction markets are trending?" -> prediction_market(query="Show trending prediction markets by volume")
+- "Compare odds on Fed rate cut" -> prediction_market(query="Compare Polymarket and Kalshi odds on Fed rate decision")
+- "Show me election markets on Polymarket" -> prediction_market(query="Search for election prediction markets on Polymarket")
+- "What are the odds of a recession?" -> prediction_market(query="Search for recession prediction markets and show probabilities")
+- "Show probability history for Trump winning" -> prediction_market(query="Get historical probability data for Trump election market")
+- "How has the probability of X changed in the past month?" -> prediction_market(query="Search for X prediction market and show 1-month probability history and change")
+- "What categories of markets exist on Kalshi?" -> prediction_market(query="List available market categories on Kalshi")
+
+SELF-DISCOVERY: The tool can find markets by topic without a URL. For any probability \
+history or change query, pass a descriptive query and the tool will search for the \
+market, find its slug, and fetch the history automatically. Do NOT ask the user for \
+a Polymarket URL, slug, or contract identifier — the tool handles discovery itself.
+
+FOR CHARTS (plot / graph / visualize probability or odds over time):
+Read the `odds-chart` skill for the step-by-step workflow.
+Do NOT attempt to chart without reading the skill first.
+
+WHEN NOT TO USE THIS TOOL (answer directly):
+- "What is a prediction market?" -- educational question, answer from knowledge
+- "How do prediction markets work?" -- conceptual explanation
+- "Is Polymarket legal?" -- regulatory question, answer from knowledge
+
+IMPORTANT:
+- Probabilities represent market-implied likelihoods, NOT objective forecasts.
+- For cross-platform comparison, the compare command finds similar markets on both Polymarket and Kalshi.
+- Polymarket prices are 0-1 scale (0.65 = 65% implied probability).
+- Kalshi prices are also normalised to 0-1 scale (0.65 = 65% implied probability)."""
+
+
 # ===== Cache reuse context injection =====
 CACHE_REUSE_CONTEXT_PROMPT = """[System Context - Cached Financial Data]
 
