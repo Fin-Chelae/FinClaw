@@ -125,6 +125,18 @@ class ExecTool(Tool):
             if "..\\" in cmd or "../" in cmd:
                 return "Error: Command blocked by safety guard (path traversal detected)"
 
+            # Block symlink creation (workspace escape vector)
+            if re.search(r"\bln\s+(-[a-zA-Z]*s|-s|--symbolic)\b", lower):
+                return "Error: Command blocked by safety guard (symlink creation not allowed in restricted mode)"
+
+            # Block cp -s (also creates symlinks)
+            if re.search(r"\bcp\s+(-[a-zA-Z]*s|-s|--symbolic-link)\b", lower):
+                return "Error: Command blocked by safety guard (symlink creation not allowed in restricted mode)"
+
+            # Block mount command
+            if re.search(r"\bmount\b", lower):
+                return "Error: Command blocked by safety guard (mount command not allowed in restricted mode)"
+
             cwd_path = Path(cwd).resolve()
 
             win_paths = re.findall(r"[A-Za-z]:\\[^\\\"']+", cmd)
