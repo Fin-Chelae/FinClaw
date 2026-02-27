@@ -17,6 +17,7 @@ TTL_SECONDS: dict[str, int] = {
     "financial_analysis": 604800,  # 7 days
     "earnings_data": 2592000,      # 30 days
     "market_search": 86400,        # 1 day
+    "prediction_market": 300,      # 5 minutes (market odds change rapidly)
 }
 
 

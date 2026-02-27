@@ -28,6 +28,7 @@ from finclaw.agent.financial.equity_valuation_router import EquityValuationRoute
 from finclaw.agent.financial.economics_router import EconomicsRouter
 from finclaw.agent.financial_tools import EconomicsDataTool
 from finclaw.agent.financial.meme_router import MemeRouter
+from finclaw.agent.financial.prediction_market_router import PredictionMarketRouter
 from finclaw.agent.financial_tools.financial_news_tool import FinancialNewsTool
 from finclaw.session.manager import Session, SessionManager
 
@@ -173,6 +174,9 @@ class AgentLoop:
 
         # Meme coin router — LLM sub-agent (market data + social scanning + token creation)
         self.tools.register(MemeRouter(**_r))
+
+        # Prediction market router — LLM sub-agent (Polymarket + Kalshi)
+        self.tools.register(PredictionMarketRouter(**_r))
 
         # Financial news (Bloomberg, MarketWatch, Google News)
         self.tools.register(FinancialNewsTool())
@@ -405,6 +409,11 @@ class AgentLoop:
                 from finclaw.agent.financial.prompts import MEME_ROUTING_PROMPT
                 finance_context_parts.append(MEME_ROUTING_PROMPT)
 
+            # Inject prediction market routing when intent is prediction_market
+            if intent.intent_type == "prediction_market":
+                from finclaw.agent.financial.prompts import PREDICTION_ROUTING_PROMPT
+                finance_context_parts.append(PREDICTION_ROUTING_PROMPT)
+
             # Check financial history first
             history_hits = self.fin_history.search(
                 tickers=intent.tickers,
@@ -500,6 +509,16 @@ class AgentLoop:
                             history_metadata["period"] = index_entry["period"]
                         if index_entry.get("raw_files"):
                             history_metadata["raw_files"] = index_entry["raw_files"]
+                elif intent.intent_type == "prediction_market":
+                    index_entry = self.fin_cache.add_index_entry(
+                        ticker="PREDICTION_MARKET",
+                        task_type=intent.intent_type,
+                        query=original_user_content,
+                        summary=final_content,
+                    )
+                    if index_entry:
+                        history_metadata["index_id"] = index_entry.get("id")
+                        history_metadata["history_ref"] = index_entry.get("history_ref")
 
                 await self.fin_history.add_entry(
                     query=original_user_content,

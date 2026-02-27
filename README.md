@@ -17,7 +17,7 @@
 ## What is FinClaw?
 
 FinClaw is an **AI financial agent** that connects to live market data, reasons through investment questions, and delivers analysis wherever you are: Telegram, Discord, Slack, email, or the command line.
- It covers US/global equities (Yahoo Finance), Chinese A-shares (AKShare), macro indicators (FRED), and Crypto (DexScreener + CoinGecko + social scanning), then combines tools + LLM reasoning into an auditable research workflow.
+ It covers US/global equities (Yahoo Finance), Chinese A-shares (AKShare), macro indicators (FRED), Crypto (DexScreener + CoinGecko + social scanning), and prediction markets (Polymarket + Kalshi), then combines tools + LLM reasoning into an auditable research workflow.
 
 FinClaw can also **launch meme coins end-to-end**: scan Twitter and RSS feeds for viral ideas, evaluate meme potential with LLM scoring, and deploy tokens directly on **pump.fun (Solana)** or **four.meme (BSC)** — all from a single natural-language prompt.
 
@@ -27,7 +27,7 @@ FinClaw can also **launch meme coins end-to-end**: scan Twitter and RSS feeds fo
 
 | | |
 |---|---|
-| **Multi-Market Coverage** | US/global equities (Yahoo Finance), Chinese A-shares (AKShare), macro data (FRED), crypto (DexScreener + CoinGecko) |
+| **Multi-Market Coverage** | US/global equities (Yahoo Finance), Chinese A-shares (AKShare), macro data (FRED), crypto (DexScreener + CoinGecko), prediction markets (Polymarket + Kalshi) |
 | **9 Chat Channels** | Telegram, Discord, Slack, WhatsApp, Feishu, DingTalk, Email, QQ, CLI |
 | **14+ LLM Providers** | Anthropic, OpenAI, Gemini, DeepSeek, Groq, OpenRouter, and more via LiteLLM |
 | **Agentic Tool Loop** | Autonomous multi-step reasoning with up to 20 tool iterations per query |
@@ -39,7 +39,6 @@ FinClaw can also **launch meme coins end-to-end**: scan Twitter and RSS feeds fo
 
 ## Roadmap
 
-- [ ] **Prediction market integration** — deep Polymarket analysis: track event probabilities over time, surface high-volume markets as meme catalysts, correlate prediction market movements with token price action, and generate trading signals from probability shifts.
 - [ ] **Automated meme pipeline** — end-to-end automation: monitor social feeds continuously, auto-score viral candidates, and optionally deploy tokens when signals cross a configurable threshold.
 
 ## Outcome-Driven Use Cases
@@ -47,6 +46,7 @@ FinClaw can also **launch meme coins end-to-end**: scan Twitter and RSS feeds fo
 - **Daily market brief**: run fixed-time summaries to monitor indices, rates, and watchlist names.
 - **Thesis tracking**: revisit prior analysis and detect whether the core thesis is strengthening or breaking.
 - **Cross-market comparison**: compare US and CN peers with the same prompt pattern.
+- **Prediction market intelligence**: query Polymarket and Kalshi for event odds, compare cross-platform probabilities, chart probability history over time, and surface high-volume markets as early signals.
 - **Team analyst copilot**: run one shared logic layer across Slack/Discord/Telegram for internal research.
 - **Meme coin launch**: scan social feeds for viral ideas, score them, and deploy a token on pump.fun or four.meme in one conversation.
 
@@ -651,7 +651,8 @@ finclaw gateway
 | **Tavily / Brave** | Web Search           | Financial news search, company filings, general web lookup |
 | **Twitter / X** | Social signals       | KOL tweet scanning, meme word extraction, viral content detection |
 | **RSS (via RSSHub)** | Multi-platform feeds | Reddit, TikTok, Truth Social, and custom feeds for meme monitoring |
-| **Polymarket** | Prediction markets   | Top markets by volume, event probabilities, meme catalyst signals |
+| **Polymarket** | Prediction markets (Polymarket) | Trending markets, keyword search, event odds, probability history, cross-platform comparison, probability charts |
+| **Kalshi** | Prediction markets (Kalshi) | Trending markets, keyword search, event and market detail, cross-platform comparison |
 
 ## Supported Channels
 
@@ -693,16 +694,20 @@ finclaw/
 │   │   ├── profile.py          #   Investment profile management
 │   │   ├── router.py           #   Metrics & search routing
 │   │   ├── meme_router.py      #   Meme coin unified router
+│   │   ├── prediction_market_router.py  # Prediction market sub-agent
 │   │   ├── history.py          #   Analysis history tracking
 │   │   └── cache.py            #   Data cache with TTL
 │   ├── financial_tools/        # Data source integrations
 │   │   ├── yfinance_tool.py    #   US/global equities
 │   │   ├── akshare_tool.py     #   Chinese A-shares
 │   │   ├── economics_data_tool.py  # FRED macro data
-│   │   └── meme/               #   Meme coin pipeline
-│   │       ├── meme_data_tool.py   # DexScreener + CoinGecko
-│   │       ├── meme_search_tool.py # Twitter + RSS scanning
-│   │       └── meme_create_tool.py # Token deployment (pump.fun + four.meme)
+│   │   ├── meme/               #   Meme coin pipeline
+│   │   │   ├── meme_data_tool.py   # DexScreener + CoinGecko
+│   │   │   ├── meme_search_tool.py # Twitter + RSS scanning
+│   │   │   └── meme_create_tool.py # Token deployment (pump.fun + four.meme)
+│   │   └── prediction_market/  #   Prediction market pipeline
+│   │       ├── prediction_market_data_tool.py  # Polymarket + Kalshi APIs
+│   │       └── prediction_market_tool.py       # Command dispatch
 │   └── tools/                  # General-purpose tools
 │       ├── web.py              #   Web search & fetch
 │       ├── filesystem.py       #   File operations
