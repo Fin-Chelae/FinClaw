@@ -16,6 +16,8 @@ Supported commands (command parameter):
   multiple_ratios   - batch financial ratios
   search            - symbol lookup by keyword
   resolve_symbol    - auto-resolve exchange suffix (.NS / .BO)
+  analyst_estimates - analyst consensus estimates, price targets, EPS trend,
+                      beat/miss history, and recommendations
 """
 
 import asyncio
@@ -280,6 +282,7 @@ def _get_financials(symbol: str) -> dict:
         return {
             "symbol": symbol,
             "income_statement": df_to_dict(ticker.financials),
+            "quarterly_income_statement": df_to_dict(ticker.quarterly_financials),
             "balance_sheet": df_to_dict(ticker.balance_sheet),
             "cash_flow": df_to_dict(ticker.cashflow),
             "timestamp": int(datetime.now().timestamp()),
@@ -414,6 +417,62 @@ def _search_symbols(query: str, limit: int = 20) -> dict:
         return {"error": str(e), "query": query, "results": []}
 
 
+def _get_analyst_estimates(symbol: str) -> dict:
+    """Fetch analyst consensus estimates, price targets, EPS trend, and recommendations.
+
+    Returns a dict with these keys (each is a nested dict or None if unavailable):
+      recommendations_summary  - buy/hold/sell counts from covering analysts
+      upgrades_downgrades      - most recent 20 rating changes (firm, grade, action)
+      analyst_price_targets    - price target distribution (current, low, high, mean, median)
+      earnings_estimate        - forward EPS consensus by period (0q, +1q, 0y, +1y)
+      revenue_estimate         - forward revenue consensus by period
+      earnings_history         - historical EPS actual vs estimate (beat/miss data)
+      eps_trend                - how EPS estimates have been revised over time
+      eps_revisions            - number of upward/downward revisions per period
+      growth_estimates         - analyst long-term growth forecasts
+    """
+    try:
+        t = yf.Ticker(symbol)
+
+        def _fetch(getter_name: str, prop_name: str, limit: int | None = None) -> Any:
+            """Try getter method then property; convert DataFrame to JSON-serializable dict."""
+            for name in (getter_name, prop_name):
+                try:
+                    attr = getattr(t, name)
+                    val = attr() if callable(attr) else attr
+                    if val is None:
+                        continue
+                    if isinstance(val, pd.DataFrame):
+                        if val.empty:
+                            continue
+                        val = val.copy()
+                        if limit:
+                            val = val.head(limit)
+                        # Stringify index to handle DatetimeIndex / period strings
+                        val.index = val.index.astype(str)
+                        return val.to_dict()
+                    return val  # dict, scalar, etc.
+                except Exception:
+                    continue
+            return None
+
+        return {
+            "symbol": symbol,
+            "recommendations_summary": _fetch("get_recommendations_summary", "recommendations_summary"),
+            "upgrades_downgrades": _fetch("get_upgrades_downgrades", "upgrades_downgrades", limit=20),
+            "analyst_price_targets": _fetch("get_analyst_price_targets", "analyst_price_targets"),
+            "earnings_estimate": _fetch("get_earnings_estimate", "earnings_estimate"),
+            "revenue_estimate": _fetch("get_revenue_estimate", "revenue_estimate"),
+            "earnings_history": _fetch("get_earnings_history", "earnings_history"),
+            "eps_trend": _fetch("get_eps_trend", "eps_trend"),
+            "eps_revisions": _fetch("get_eps_revisions", "eps_revisions"),
+            "growth_estimates": _fetch("get_growth_estimates", "growth_estimates"),
+            "timestamp": int(datetime.now().timestamp()),
+        }
+    except Exception as e:
+        return {"error": str(e), "symbol": symbol}
+
+
 def _resolve_symbol(symbol: str) -> dict:
     """Resolve a stock symbol, auto-appending .NS or .BO exchange suffix if needed."""
     symbol = symbol.strip().upper()
@@ -490,6 +549,7 @@ class YFinanceTool(Tool):
                     "multiple_ratios",
                     "search",
                     "resolve_symbol",
+                    "analyst_estimates",
                 ],
                 "description": (
                     "Action to perform. "
@@ -500,7 +560,9 @@ class YFinanceTool(Tool):
                     "company_profile/financial_ratios: peer comparison data; "
                     "multiple_profiles/multiple_ratios: batch peer data; "
                     "search: symbol lookup by keyword; "
-                    "resolve_symbol: auto-resolve exchange suffix."
+                    "resolve_symbol: auto-resolve exchange suffix; "
+                    "analyst_estimates: consensus EPS/revenue estimates, beat/miss history, "
+                    "price targets, EPS revisions, and buy/hold/sell recommendations."
                 ),
             },
             "symbol": {
@@ -508,7 +570,8 @@ class YFinanceTool(Tool):
                 "description": (
                     "Stock ticker (e.g. 'AAPL', 'RELIANCE.NS'). "
                     "Required for: quote, historical, historical_price, info, "
-                    "financials, company_profile, financial_ratios, resolve_symbol."
+                    "financials, company_profile, financial_ratios, resolve_symbol, "
+                    "analyst_estimates."
                 ),
             },
             "symbols": {
@@ -637,6 +700,12 @@ class YFinanceTool(Tool):
             if not symbol:
                 return json.dumps({"error": "symbol is required for resolve_symbol"})
             result = await asyncio.to_thread(_resolve_symbol, symbol)
+
+        elif command == "analyst_estimates":
+            symbol = kwargs.get("symbol", "")
+            if not symbol:
+                return json.dumps({"error": "symbol is required for analyst_estimates"})
+            result = await asyncio.to_thread(_get_analyst_estimates, symbol)
 
         else:
             result = {"error": f"Unknown command: {command!r}"}
