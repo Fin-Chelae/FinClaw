@@ -5,9 +5,10 @@ Internally it runs a focused inner LLM that has access to specialized data tools
 calls them in parallel, and returns the combined result.
 
 Data source status:
-  ✅ yfinance   - US/global quotes, historical data, fundamentals
-  ✅ akshare    - Chinese A-share quotes, historical, financials, sectors, indices
-  ✅ sec_edgar  - SEC EDGAR 10-Q/10-K filings (daily list, ticker filings, full parse)
+  ✅ yfinance          - US/global quotes, historical data, fundamentals
+  ✅ akshare           - Chinese A-share quotes, historical, financials, sectors, indices
+  ✅ sec_edgar         - SEC EDGAR 10-Q/10-K filings (daily list, ticker filings, full parse)
+  ✅ earnings_calendar - Earnings dates, EPS surprises, consensus estimates, revisions
 """
 
 from pathlib import Path
@@ -50,19 +51,23 @@ class FinancialMetricsRouter(LLMRouterTool):
     _inner_system_prompt = (
         "You are a financial data specialist. Fetch the requested metrics precisely.\n\n"
         "Tool selection:\n"
-        "  yfinance_tool  → US / global stocks (AAPL, NVDA, MSFT, …)\n"
-        "  akshare_tool   → Chinese A-shares (600519, 000651, …)\n\n"
+        "  yfinance_tool       → US / global stocks (AAPL, NVDA, MSFT, …)\n"
+        "  akshare_tool        → Chinese A-shares (600519, 000651, …)\n"
+        "  earnings_calendar   → Earnings dates, EPS surprises, consensus estimates, revisions\n\n"
         "yfinance_tool commands: info, quote, historical, financials, financial_ratios, batch_quotes\n"
         "akshare_tool  commands: quote, historical, info, financials, news, search, "
-        "sector_performance, index_quotes\n\n"
+        "sector_performance, index_quotes\n"
+        "earnings_calendar commands: calendar, upcoming, surprise, consensus, revisions\n\n"
+        "Use earnings_calendar for any query about: earnings dates, when a company reports, "
+        "EPS beat/miss history, analyst EPS/revenue estimates, or estimate revisions.\n\n"
         "Fetch data comprehensively. Call multiple tools in parallel when several "
         "metrics or tickers are requested. "
         "Summarise the key findings in 2-4 sentences. Raw data is preserved separately."
     )
 
     def _build_inner_tools(self) -> list[Tool]:
-        from finclaw.agent.financial_tools import YFinanceTool, AKShareTool
-        return [YFinanceTool(), AKShareTool()]
+        from finclaw.agent.financial_tools import YFinanceTool, AKShareTool, EarningsCalendarTool
+        return [YFinanceTool(), AKShareTool(), EarningsCalendarTool()]
 
     async def execute(self, **kwargs: Any) -> str:
         query = kwargs.get("query", "")
@@ -103,15 +108,18 @@ class FinancialSearchRouter(LLMRouterTool):
     _inner_system_prompt = (
         "You are a financial search specialist. Retrieve all requested data accurately.\n\n"
         "Available tools:\n"
-        "  yfinance_tool   → US/global: quote, historical, info, batch_quotes, financials, financial_ratios\n"
-        "  akshare_tool    → A-shares:  quote, historical, info, news, search, sector_performance, "
+        "  yfinance_tool       → US/global: quote, historical, info, batch_quotes, financials, financial_ratios\n"
+        "  akshare_tool        → A-shares:  quote, historical, info, news, search, sector_performance, "
         "index_quotes, financials\n"
-        "  sec_edgar_tool  → SEC EDGAR: ticker_filings, fetch_and_parse, daily_parsed\n"
-        "  web_search      → general web search (fallback for US stock news if configured)\n\n"
+        "  sec_edgar_tool      → SEC EDGAR: ticker_filings, fetch_and_parse, daily_parsed\n"
+        "  earnings_calendar   → Earnings dates, EPS surprises, consensus estimates, revisions\n"
+        "  web_search          → general web search (fallback for US stock news if configured)\n\n"
         "Rules:\n"
         "  - For A-share stocks use numeric code: '600519', NOT '600519.SS'\n"
         "  - For SEC filings: call ticker_filings to list, then fetch_and_parse for the latest\n"
         "  - For any 10-K/10-Q/filing/MD&A/risk-factors request, always use sec_edgar_tool\n"
+        "  - For earnings dates, beat/miss history, EPS estimates, or estimate revisions, "
+        "use earnings_calendar (commands: calendar, upcoming, surprise, consensus, revisions)\n"
         "  - Fetch all requested data in parallel when multiple pieces are needed\n"
         "Summarise the key findings in 2-4 sentences. Raw data is preserved separately."
     )
@@ -129,8 +137,8 @@ class FinancialSearchRouter(LLMRouterTool):
         self._search_tool = search_tool
 
     def _build_inner_tools(self) -> list[Tool]:
-        from finclaw.agent.financial_tools import YFinanceTool, AKShareTool, SecEdgarTool
-        tools: list[Tool] = [YFinanceTool(), AKShareTool(), SecEdgarTool()]
+        from finclaw.agent.financial_tools import YFinanceTool, AKShareTool, SecEdgarTool, EarningsCalendarTool
+        tools: list[Tool] = [YFinanceTool(), AKShareTool(), SecEdgarTool(), EarningsCalendarTool()]
         if self._search_tool is not None:
             tools.append(self._search_tool)
         return tools
