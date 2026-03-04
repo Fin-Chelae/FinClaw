@@ -26,10 +26,12 @@ class FinancialMetricsRouter(LLMRouterTool):
 
     name = "financial_metrics"
     description = (
-        "Query company financial metrics and fundamental data. "
+        "Query company financial metrics, fundamental data, and earnings intelligence. "
         "Supports US stocks (AAPL, NVDA) and Chinese A-shares (600519, 000651). "
         "Use for income statements, balance sheets, cash flow, key ratios, "
         "analyst estimates, insider trades, and segment data. "
+        "Also use for ALL earnings-related queries: next earnings date, EPS beat/miss history, "
+        "forward EPS/revenue consensus estimates, and analyst estimate revisions. "
         "Describe what you need in plain language."
     )
     parameters = {
@@ -112,14 +114,11 @@ class FinancialSearchRouter(LLMRouterTool):
         "  akshare_tool        → A-shares:  quote, historical, info, news, search, sector_performance, "
         "index_quotes, financials\n"
         "  sec_edgar_tool      → SEC EDGAR: ticker_filings, fetch_and_parse, daily_parsed\n"
-        "  earnings_calendar   → Earnings dates, EPS surprises, consensus estimates, revisions\n"
         "  web_search          → general web search (fallback for US stock news if configured)\n\n"
         "Rules:\n"
         "  - For A-share stocks use numeric code: '600519', NOT '600519.SS'\n"
         "  - For SEC filings: call ticker_filings to list, then fetch_and_parse for the latest\n"
         "  - For any 10-K/10-Q/filing/MD&A/risk-factors request, always use sec_edgar_tool\n"
-        "  - For earnings dates, beat/miss history, EPS estimates, or estimate revisions, "
-        "use earnings_calendar (commands: calendar, upcoming, surprise, consensus, revisions)\n"
         "  - Fetch all requested data in parallel when multiple pieces are needed\n"
         "Summarise the key findings in 2-4 sentences. Raw data is preserved separately."
     )
@@ -137,8 +136,8 @@ class FinancialSearchRouter(LLMRouterTool):
         self._search_tool = search_tool
 
     def _build_inner_tools(self) -> list[Tool]:
-        from finclaw.agent.financial_tools import YFinanceTool, AKShareTool, SecEdgarTool, EarningsCalendarTool
-        tools: list[Tool] = [YFinanceTool(), AKShareTool(), SecEdgarTool(), EarningsCalendarTool()]
+        from finclaw.agent.financial_tools import YFinanceTool, AKShareTool, SecEdgarTool
+        tools: list[Tool] = [YFinanceTool(), AKShareTool(), SecEdgarTool()]
         if self._search_tool is not None:
             tools.append(self._search_tool)
         return tools
