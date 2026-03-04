@@ -9,7 +9,7 @@ class FinancialIntent:
     """Result of financial intent detection."""
 
     is_financial: bool = False
-    intent_type: str = "unknown"  # price_query / financial_analysis / market_search / macro_analysis / meme / prediction_market / unknown
+    intent_type: str = "unknown"  # price_query / earnings_calendar / financial_analysis / market_search / macro_analysis / meme / prediction_market / unknown
     tickers: list[str] = field(default_factory=list)
     confidence: float = 0.0
 
@@ -159,6 +159,26 @@ class FinancialIntentDetector:
         "how has the probability", "how have the odds",
     }
 
+    EARNINGS_CALENDAR_KEYWORDS = {
+        # dates / upcoming
+        "earnings date", "earnings calendar", "when does", "when will", "when is",
+        "next earnings", "upcoming earnings", "earnings this week", "earnings next week",
+        "earnings schedule", "reporting date", "report date",
+        # beat / miss / surprise
+        "earnings surprise", "eps surprise", "beat estimates", "missed estimates",
+        "beat by", "missed by", "earnings beat", "earnings miss",
+        "eps beat", "eps miss", "better than expected", "worse than expected",
+        "earnings whisper",
+        # estimates / consensus
+        "eps estimate", "earnings estimate", "consensus estimate", "analyst estimate",
+        "revenue estimate", "eps consensus", "forward eps",
+        # revisions
+        "eps revision", "estimate revision", "analyst revision",
+        "estimate upgrade", "estimate downgrade", "raised estimates", "lowered estimates",
+        # Chinese
+        "财报日期", "业绩预告", "盈利超预期", "盈利不及预期", "每股收益",
+    }
+
     PRICE_KEYWORDS = {
         "price", "quote", "how much", "current",
         "股价", "价格", "多少钱", "现在", "实时", "行情",
@@ -191,6 +211,8 @@ class FinancialIntentDetector:
             intent.intent_type = "prediction_market"
         elif any(kw.lower() in query_lower for kw in self.MACRO_KEYWORDS):
             intent.intent_type = "macro_analysis"
+        elif any(kw.lower() in query_lower for kw in self.EARNINGS_CALENDAR_KEYWORDS):
+            intent.intent_type = "earnings_calendar"
         elif any(kw.lower() in query_lower for kw in self.PRICE_KEYWORDS):
             intent.intent_type = "price_query"
         elif any(kw.lower() in query_lower for kw in self.ANALYSIS_KEYWORDS):
