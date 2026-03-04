@@ -252,7 +252,10 @@ class ToolsConfig(BaseModel):
     financial: FinancialDataConfig = Field(default_factory=FinancialDataConfig)
     meme_monitor: MemeMonitorConfig = Field(default_factory=MemeMonitorConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
-    restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
+    # SECURITY: defaults to True to prevent LLM from accessing files outside workspace.
+    # MIGRATION: previously defaulted to False. Users who relied on unrestricted access
+    # must explicitly set restrict_to_workspace=false in their config after upgrading.
+    restrict_to_workspace: bool = True
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
 
