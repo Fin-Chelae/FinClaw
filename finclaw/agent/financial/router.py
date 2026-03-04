@@ -5,9 +5,10 @@ Internally it runs a focused inner LLM that has access to specialized data tools
 calls them in parallel, and returns the combined result.
 
 Data source status:
-  ✅ yfinance   - US/global quotes, historical data, fundamentals
-  ✅ akshare    - Chinese A-share quotes, historical, financials, sectors, indices
-  ✅ sec_edgar  - SEC EDGAR 10-Q/10-K filings (daily list, ticker filings, full parse)
+  ✅ yfinance          - US/global quotes, historical data, fundamentals
+  ✅ akshare           - Chinese A-share quotes, historical, financials, sectors, indices
+  ✅ sec_edgar         - SEC EDGAR 10-Q/10-K filings (daily list, ticker filings, full parse)
+  ✅ earnings_calendar - Earnings dates, EPS surprises, consensus estimates, revisions
 """
 
 from pathlib import Path
@@ -36,22 +37,26 @@ def _is_filing_query(query: str) -> bool:
 # Appended to the tool result so the OUTER LLM (Claude) receives explicit
 # format instructions and reliably produces a structured table in its reply.
 _EARNINGS_FORMAT_HINT = """
+
 ---
-[FORMAT INSTRUCTION — fill in the table below using the data above]
+⚠️ REQUIRED FORMAT — You MUST present your response as a structured table. Do NOT write prose paragraphs. Fill in the values from the data above:
 
-| Metric           | Actual | YoY Δ | QoQ Δ |
-|------------------|--------|-------|-------|
-| Revenue          |        |       |       |
-| Gross Profit     |        |       |       |
-| Gross Margin     |        | (pp)  | (pp)  |
-| Operating Income |        |       |       |
-| Operating Margin |        | (pp)  | (pp)  |
-| Net Income       |        |       |       |
-| EPS (diluted)    |        |       |       |
+| Metric           | Latest Quarter | YoY Δ | QoQ Δ |
+|------------------|----------------|-------|-------|
+| Revenue          |                |       |       |
+| Gross Profit     |                |       |       |
+| Gross Margin     |                | (pp)  | (pp)  |
+| Operating Income |                |       |       |
+| Operating Margin |                | (pp)  | (pp)  |
+| Net Income       |                |       |       |
+| EPS (diluted)    |                |       |       |
 
-**EPS vs Consensus:** [actual] vs [estimate] → Beat / Miss by [surprise %]
-**Analyst Price Target (mean):** $XX  |  **Ratings:** strongBuy=X  hold=X  sell=X
-"""
+Then add:
+**EPS vs Consensus:** [actual] vs [estimate] → Beat / Miss by [X%]
+**Analyst Price Target:** $XX mean | Ratings: strongBuy=X  buy=X  hold=X  sell=X
+
+Only add brief bullet-point commentary after the table.
+---"""
 
 
 class FinancialMetricsRouter(LLMRouterTool):
@@ -59,12 +64,13 @@ class FinancialMetricsRouter(LLMRouterTool):
 
     name = "financial_metrics"
     description = (
-        "Fetch structured financial metrics and ratios for a company. "
+        "Query company financial metrics, fundamental data, and earnings intelligence. "
         "Supports US stocks (AAPL, NVDA) and Chinese A-shares (600519, 000651). "
-        "Use for: historical income statements, balance sheets, cash flow statements, "
-        "valuation ratios (P/E, P/B), analyst estimates, insider trades, segment data. "
-        "Do NOT use for earnings analysis or quarterly results review — "
-        "use financial_search instead, which also fetches the actual SEC filing text."
+        "Use for income statements, balance sheets, cash flow, key ratios, "
+        "analyst estimates, insider trades, and segment data. "
+        "Also use for ALL earnings-related queries: next earnings date, EPS beat/miss history, "
+        "forward EPS/revenue consensus estimates, and analyst estimate revisions. "
+        "Describe what you need in plain language."
     )
     parameters = {
         "type": "object",
@@ -85,28 +91,52 @@ class FinancialMetricsRouter(LLMRouterTool):
     _inner_system_prompt = (
         "You are a financial data specialist. Fetch the requested metrics precisely.\n\n"
         "Tool selection:\n"
-        "  yfinance_tool  → US / global stocks (AAPL, NVDA, MSFT, …)\n"
-        "  akshare_tool   → Chinese A-shares (600519, 000651, …)\n\n"
-        "yfinance_tool commands: info, quote, historical, financials, financial_ratios, "
-        "batch_quotes, analyst_estimates\n"
+        "  yfinance_tool       → US / global stocks (AAPL, NVDA, MSFT, …)\n"
+        "  akshare_tool        → Chinese A-shares (600519, 000651, …)\n"
+        "  earnings_calendar   → Earnings dates, EPS surprises, consensus estimates, revisions\n"
+        "  sec_edgar_tool      → SEC filings: 10-K, 10-Q, 8-K, earnings reports, annual reports\n\n"
+        "yfinance_tool commands: info, quote, historical, financials, financial_ratios, batch_quotes\n"
         "akshare_tool  commands: quote, historical, info, financials, news, search, "
-        "sector_performance, index_quotes\n\n"
-        "For earnings / quarterly results queries: call both financials AND analyst_estimates "
-        "in parallel — analyst_estimates returns EPS consensus, beat/miss history, "
-        "analyst ratings, and price targets.\n\n"
+        "sector_performance, index_quotes\n"
+        "earnings_calendar commands: calendar, upcoming, surprise, consensus, revisions\n"
+        "sec_edgar_tool    commands: search_filings, get_filing, company_facts\n\n"
+        "Use earnings_calendar for any query about: earnings dates, when a company reports, "
+        "EPS beat/miss history, analyst EPS/revenue estimates, or estimate revisions.\n"
+        "Use sec_edgar_tool for: official SEC filings, 10-K annual reports, 10-Q quarterly reports, "
+        "8-K disclosures, or when you need authoritative financial statements from filed documents.\n\n"
         "Fetch data comprehensively. Call multiple tools in parallel when several "
         "metrics or tickers are requested. "
-        "Summarise the key findings in 2-4 sentences. Raw data is preserved separately."
+        "Summarise the key findings in 2-4 sentences. Raw data is preserved separately.\n\n"
+        "For earnings / quarterly results queries:\n"
+        "  1. Call yfinance_tool with command=financials — returns multi-quarter income statement "
+        "so you can compute YoY Δ (vs same quarter last year) and QoQ Δ (vs prior quarter).\n"
+        "  2. Call earnings_calendar with command=surprise — EPS actual vs consensus beat/miss.\n"
+        "  3. Call yfinance_tool with command=analyst_estimates — price target and ratings.\n"
+        "  Run all three in parallel. Then fill in the table below with real values:\n"
+        "| Metric           | Actual | YoY Δ | QoQ Δ |\n"
+        "|------------------|--------|-------|-------|\n"
+        "| Revenue          |        |       |       |\n"
+        "| Gross Profit     |        |       |       |\n"
+        "| Gross Margin     |        | (pp)  | (pp)  |\n"
+        "| Operating Income |        |       |       |\n"
+        "| Operating Margin |        | (pp)  | (pp)  |\n"
+        "| Net Income       |        |       |       |\n"
+        "| EPS (diluted)    |        |       |       |\n\n"
+        "**EPS vs Consensus:** [actual] vs [estimate] → Beat / Miss by [surprise %]\n"
+        "**Analyst Price Target (mean):** $XX  |  **Ratings:** strongBuy=X  hold=X  sell=X"
     )
 
     def _build_inner_tools(self) -> list[Tool]:
-        from finclaw.agent.financial_tools import YFinanceTool, AKShareTool
-        return [YFinanceTool(), AKShareTool()]
+        from finclaw.agent.financial_tools import YFinanceTool, AKShareTool, EarningsCalendarTool, SecEdgarTool
+        return [YFinanceTool(), AKShareTool(), EarningsCalendarTool(), SecEdgarTool()]
 
     async def execute(self, **kwargs: Any) -> str:
         query = kwargs.get("query", "")
         logger.info(f"financial_metrics (inner-LLM): {query[:120]}")
-        return await self._run_inner_agent(query)
+        result = await self._run_inner_agent(query)
+        if _is_filing_query(query):
+            return result + _EARNINGS_FORMAT_HINT
+        return result
 
 
 class FinancialSearchRouter(LLMRouterTool):
@@ -114,13 +144,12 @@ class FinancialSearchRouter(LLMRouterTool):
 
     name = "financial_search"
     description = (
-        "Search for financial data, market info, news, and SEC filings. "
+        "Search for financial data, company information, market data, news, and SEC filings. "
         "Supports US stocks, Chinese A-shares, FX pairs, and SEC EDGAR. "
-        "Use for: real-time quotes, historical OHLCV, company facts, stock news, "
+        "Use for real-time quotes, historical OHLCV, company facts, stock news, "
         "sector rankings, index quotes, and 10-K/10-Q filings. "
-        "IMPORTANT: Use this tool for any earnings analysis, quarterly results review, "
-        "财报分析, or 季报/年报 request — it fetches the actual SEC filing text (MD&A, "
-        "risk factors, guidance) alongside analyst consensus data."
+        "IMPORTANT: For any 10-K, 10-Q, SEC filing, annual report, risk factors, or MD&A "
+        "request, this tool fetches filing text directly from SEC EDGAR."
     )
     parameters = {
         "type": "object",
@@ -135,7 +164,7 @@ class FinancialSearchRouter(LLMRouterTool):
                     "'Show trending A-share sectors today', "
                     "'AAPL vs MSFT 30-day historical price data'."
                 ),
-            },
+            }
         },
         "required": ["query"],
     }

@@ -37,7 +37,7 @@ class FinancialHistoryManager:
 
         Uses two detail levels:
         - price_query: brief record (query + result summary)
-        - financial_analysis / others: detailed record (query + tools + key findings)
+        - earnings_calendar / financial_analysis / others: detailed record (query + tools + key findings)
         """
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         tickers = ", ".join(intent.tickers) if intent.tickers else "N/A"
