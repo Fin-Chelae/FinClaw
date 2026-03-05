@@ -596,13 +596,16 @@ class SecEdgarTool(Tool):
             cik_int = str(int(cik))
             url_txt = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_no_dashes}/{doc}"
             filings.append({"form": form, "filing_date": date_str, "filing_url": url_txt, "accession": acc})
-            if len(filings) >= 10:
-                break
+
+        # Explicitly sort newest-first so index 0 is always the most recent filing.
+        filings.sort(key=lambda f: f["filing_date"], reverse=True)
+        filings = filings[:5]  # Return only the 5 most recent to reduce LLM confusion.
 
         return json.dumps({
             "ticker": ticker,
             "cik": cik,
             "company_name": data.get("name", ""),
+            "note": "filings sorted by date descending — index 0 is the most recent",
             "filings": filings,
         }, ensure_ascii=False)
 
