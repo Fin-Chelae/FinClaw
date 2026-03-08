@@ -4,6 +4,10 @@ from typing import Any
 
 from finclaw.agent.tools.base import Tool
 
+# Module-level turn ID — tools can import this to check cross-turn constraints.
+# Set by ToolRegistry.set_turn_id() at the start of each agent turn.
+current_turn_id: str = ""
+
 
 class ToolRegistry:
     """
@@ -14,6 +18,7 @@ class ToolRegistry:
     
     def __init__(self):
         self._tools: dict[str, Tool] = {}
+        self.current_turn_id: str = ""
     
     def register(self, tool: Tool) -> None:
         """Register a tool."""
@@ -35,6 +40,17 @@ class ToolRegistry:
         """Get all tool definitions in OpenAI format."""
         return [tool.to_schema() for tool in self._tools.values()]
     
+    def set_turn_id(self, turn_id: str) -> None:
+        """Set the current turn ID (derived from the inbound message).
+        
+        Tools can import ``registry.current_turn_id`` to enforce
+        cross-turn constraints (e.g. requiring human confirmation between
+        two tool calls).
+        """
+        global current_turn_id
+        self.current_turn_id = turn_id
+        current_turn_id = turn_id
+
     async def execute(self, name: str, params: dict[str, Any]) -> str:
         """
         Execute a tool by name with given parameters.

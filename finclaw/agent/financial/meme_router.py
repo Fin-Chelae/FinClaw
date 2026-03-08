@@ -77,8 +77,9 @@ class _MemeDispatch(Tool):
             "launch_scan (scan all social sources), check_tweets, check_rss, analyze_text, "
             "polymarket (prediction market signals), check_env, create (deploy token), status. "
             "Supports pump.fun (Solana) and four.meme (BSC) for token creation. "
-            "For create operations — the user has already confirmed at the outer level. "
-            "Call check_env and create directly without asking for further confirmation."
+            "For create operations: call check_env first, then create. "
+            "The create command returns a confirmation token — present it to the user. "
+            "Use confirm/cancel with the token once the user responds."
         )
 
     @property
@@ -94,7 +95,7 @@ class _MemeDispatch(Tool):
                         "analyze_text",
                         "start_monitor", "stop_monitor", "status",
                         "polymarket",
-                        "check_env", "create",
+                        "check_env", "create", "confirm", "cancel",
                     ],
                     "description": (
                         "search: find tokens by name/symbol; "
@@ -112,6 +113,10 @@ class _MemeDispatch(Tool):
                         "create: deploy a new memecoin on pump.fun (Solana) or four.meme (BSC). "
                         "NOTE: if the user provides a token name/symbol, skip 'search' and go directly to check_env → create."
                     ),
+                },
+                "confirmation_token": {
+                    "type": "string",
+                    "description": "Confirmation token for confirm/cancel commands.",
                 },
                 "query": {
                     "type": "string",
@@ -300,6 +305,9 @@ class _MemeDispatch(Tool):
             elif command == "create":
                 raw = await _get_create().execute(**kwargs)
                 result.update(json.loads(raw))
+            elif command in ("confirm", "cancel"):
+                raw = await _get_create().execute(**kwargs)
+                result.update(json.loads(raw))
             else:
                 result["error"] = f"Unknown command: {command!r}"
         except Exception as exc:
@@ -416,8 +424,9 @@ class MemeRouter(LLMRouterTool):
         "  create        — deploy a new memecoin on pump.fun (Solana) or four.meme (BSC)\n"
         "  status        — show monitor and API health status\n\n"
         "For a comprehensive meme analysis, call trending + launch_scan in parallel.\n"
-        "For token creation: the user has ALREADY confirmed at the outer level. "
-        "Call check_env and create directly — do NOT ask for additional confirmation.\n"
+        "For token creation: call check_env, then create. The create command returns a "
+        "pending confirmation with a token — present the details to the user. "
+        "Use confirm/cancel with the confirmation_token once the user responds.\n"
         "For launch_scan results, present candidates for the user to choose from.\n"
         "Summarise the key findings in 2-4 sentences. Raw data is preserved separately."
     )
@@ -467,7 +476,9 @@ class MemeRouter(LLMRouterTool):
         return params
 
     async def _fast_create(self, params: dict[str, str]) -> str:
-        """Direct create dispatch — bypasses inner LLM agent entirely."""
+        """Fast-path create — bypasses inner LLM but still goes through
+        the confirmation flow in MemeCreateTool.  Returns a pending
+        confirmation that the outer agent must present to the user."""
         dispatch = _MemeDispatch()
         platform = params.get("platform", "pump.fun")
 
@@ -483,33 +494,30 @@ class MemeRouter(LLMRouterTool):
                 "data": env_result,
             })
 
-        # 2. Deploy
+        # 2. Initiate create (returns pending_confirmation, NOT a direct deploy)
         create_raw = await dispatch.execute(command="create", **params)
         create_result = json.loads(create_raw)
 
-        if create_result.get("success"):
-            result_platform = create_result.get("platform", platform)
-            if result_platform == "four.meme":
-                token_addr = create_result.get("token_address", "")
-                summary = (
-                    f"Token deployed successfully on four.meme (BSC)!\n"
-                    f"Token: {token_addr}\n"
-                    f"four.meme: {create_result.get('four_meme_url', '')}\n"
-                    f"Transaction: {create_result.get('bscscan_url', create_result.get('tx_hash', ''))}"
-                )
-            else:
-                mint = create_result.get("mint", "")
-                summary = (
-                    f"Token deployed successfully on pump.fun (Solana)!\n"
-                    f"Mint: {mint}\n"
-                    f"pump.fun: {create_result.get('pump_fun_url', '')}\n"
-                    f"Transaction: {create_result.get('solscan_url', create_result.get('signature', ''))}"
-                )
-        else:
-            summary = f"Token creation failed: {create_result.get('error', 'unknown error')}"
+        # The result will have status=pending_confirmation with a token.
+        # Return it so the outer agent presents it to the user for approval.
+        if create_result.get("status") == "pending_confirmation":
+            details = create_result.get("details", {})
+            summary = (
+                f"Token deployment prepared — awaiting confirmation.\n"
+                f"Name: {details.get('name')}, Symbol: {details.get('symbol')}, "
+                f"Platform: {details.get('platform')}\n"
+                f"Confirmation token: {create_result.get('confirmation_token')}\n"
+                f"Reply with confirmation to proceed, or cancel to abort. Expires in 5 minutes."
+            )
+            return json.dumps(
+                {"summary": summary, "data": create_result},
+                ensure_ascii=False,
+                default=str,
+            )
 
+        # Fallback for unexpected responses
         return json.dumps(
-            {"summary": summary, "data": create_result},
+            {"summary": json.dumps(create_result), "data": create_result},
             ensure_ascii=False,
             default=str,
         )
