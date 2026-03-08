@@ -262,6 +262,14 @@ class TelegramChannel(BaseChannel):
         # Store chat_id for replies
         self._chat_ids[sender_id] = chat_id
         
+        # Auth check: deny unauthorized users with explicit message
+        if not self.is_allowed(sender_id):
+            try:
+                await message.reply_text("⚠️ Access denied. Contact the bot administrator.")
+            except Exception:
+                pass
+            return
+        
         # Build content from text and/or media
         content_parts = []
         media_paths = []
@@ -329,6 +337,7 @@ class TelegramChannel(BaseChannel):
         
         str_chat_id = str(chat_id)
         
+
         # Start typing indicator before processing
         self._start_typing(str_chat_id)
         
